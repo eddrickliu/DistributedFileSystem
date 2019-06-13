@@ -68,10 +68,8 @@ public class FileServer extends UnicastRemoteObject implements ServerInterface {
         FileServer.File file = null;
         synchronized(this.cache) {
         	for(int i = 0; i < this.cache.size(); i++) {
-        		System.out.println("Searching cache for the file");
                 file = (File)this.cache.elementAt(i);
                 if (file.hit(fileName)) {
-                	System.out.println("File was found in cache");
                 	break;
                 }else{
 //                	System.out.println("Checked a cache file, not a match");  DELETE
@@ -111,22 +109,22 @@ public class FileServer extends UnicastRemoteObject implements ServerInterface {
         }
 
         private void listReaders() {
-            System.out.println("# readers = " + this.readers.size());
+            System.out.println("Number of readers: " + this.readers.size());
 
             for(int i = 0; i < this.readers.size(); ++i) {
                 String reader = (String)this.readers.elementAt(i);
-                System.out.println("\treader = " + reader);
+                System.out.println("\tReader: " + reader);
             }
 
         }
 
         private void printTransition(String client, String downloadOrUpload, String mode, int oldState, int newState, int errorCode) {
-            System.out.println("file(" + this.name + ") requested by " + client + ":" + downloadOrUpload + "(" + mode + "): state( " + 
+            System.out.println(this.name + " requested by " + client + " for " + downloadOrUpload + "(" + mode + "). State( " + 
             		(oldState == 0 ? "notshared" : (oldState == 1 ? "readshared" : (oldState == 2 ? "writeshared" : 
             		"back2writeshared"))) + " --> " + (newState == 0 ? "notshared" : (newState == 1 ? "readshared" : 
-            		(newState == 2 ? "writeshared" : "back2writeshared"))) + " )  error_code = " + errorCode);
+            		(newState == 2 ? "writeshared" : "back2writeshared"))) + " ). Error code: " + errorCode);
             this.listReaders();
-            System.out.println("owner = " + this.owner);
+            System.out.println("Owner: " + this.owner);
         }
 
         public File(String name, String port) {
@@ -154,7 +152,7 @@ public class FileServer extends UnicastRemoteObject implements ServerInterface {
                 return null;
             }
 
-            System.out.println("file read from " + this.name + ": " + buffer.length + " bytes");
+            System.out.println(buffer.length + " bytes read from " + this.name);
             return buffer;
         }
 
@@ -172,7 +170,7 @@ public class FileServer extends UnicastRemoteObject implements ServerInterface {
                 return false;
             }
 
-            System.out.println("file written to " + this.name + ": " + this.bytes.length + " bytes");
+            System.out.println(this.bytes.length + " bytes written to " + this.name);
             return true;
         }
 
@@ -300,7 +298,6 @@ public class FileServer extends UnicastRemoteObject implements ServerInterface {
          * @return
          */
         public synchronized boolean upload(String client, FileContents contents) {
-        	System.out.println("FileServer::File::upload()");
             int errorCode = this.state != 0 && this.state != 1 ? 0 : 2;
 
             int oldState;
