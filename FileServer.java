@@ -12,52 +12,52 @@ public class FileServer extends UnicastRemoteObject implements ServerInterface {
     private String port = null;
     private Vector<FileServer.File> cache = null;
 
-    public FileServer(String var1) throws RemoteException {
-        this.port = var1;
+    public FileServer(String port) throws RemoteException {
+        this.port = port;
         this.cache = new Vector();
     }
 
-    public static void main(String[] var0) {
-        if (var0.length != 1) {
+    public static void main(String[] args) {
+        if (args.length != 1) {
             System.err.println("usage: java FileServer port#");
             System.exit(-1);
         }
 
         try {
-            FileServer var1 = new FileServer(var0[0]);
-            Naming.rebind("rmi://localhost:" + var0[0] + "/fileserver", var1);
-            System.out.println("FileServer running on port " + var0[0]);
-        } catch (Exception var2) {
-            var2.printStackTrace();
+            FileServer server = new FileServer(args[0]);
+            Naming.rebind("rmi://localhost:" + args[0] + "/fileserver", server);
+            System.out.println("FileServer running on port " + args[0]);
+        } catch (Exception e) {
+            e.printStackTrace();
             System.exit(1);
         }
 
     }
 
-    public FileContents download(String var1, String var2, String var3) {
-        FileServer.File var4 = null;
+    public FileContents download(String client, String name, String mode) {
+        FileServer.File file = null;
         synchronized(this.cache) {
-            int var6 = 0;
+            int i = 0;
 
             while(true) {
-                if (var6 < this.cache.size()) {
-                    var4 = (FileServer.File)this.cache.elementAt(var6);
-                    if (!var4.hit(var2)) {
-                        var4 = null;
-                        ++var6;
+                if (i < this.cache.size()) {
+                    file = (FileServer.File)this.cache.elementAt(i);
+                    if (!file.hit(name)) {
+                        file = null;
+                        ++i;
                         continue;
                     }
                 }
 
-                if (var4 == null) {
-                    var4 = new FileServer.File(var2, this.port);
-                    this.cache.add(var4);
+                if (file == null) {
+                    file = new FileServer.File(name, this.port);
+                    this.cache.add(file);
                 }
                 break;
             }
         }
 
-        return var4.download(var1, var3);
+        return file.download(client, mode);
     }
 
     /**
@@ -98,11 +98,11 @@ public class FileServer extends UnicastRemoteObject implements ServerInterface {
         private String port = null;
         private Object inStateBack2WriteShared = null;
 
-        private boolean removeReader(String var1) {
-            for(int var2 = 0; var2 < this.readers.size(); ++var2) {
-                String var3 = (String)this.readers.elementAt(var2);
-                if (var1.equals(var3)) {
-                    this.readers.remove(var2);
+        private boolean removeReader(String readerToRemove) {
+            for(int index = 0; index < this.readers.size(); ++index) {
+                String readerInList = (String)this.readers.elementAt(index);
+                if (readerToRemove.equals(readerInList)) {
+                    this.readers.remove(index);
                     return true;
                 }
             }
@@ -113,15 +113,15 @@ public class FileServer extends UnicastRemoteObject implements ServerInterface {
         private void listReaders() {
             System.out.println("# readers = " + this.readers.size());
 
-            for(int var1 = 0; var1 < this.readers.size(); ++var1) {
-                String var2 = (String)this.readers.elementAt(var1);
-                System.out.println("\treader = " + var2);
+            for(int i = 0; i < this.readers.size(); ++i) {
+                String reader = (String)this.readers.elementAt(i);
+                System.out.println("\treader = " + reader);
             }
 
         }
 
-        private void printTransition(String var1, String var2, String mode, int oldState, int newState, int errorCode) {
-            System.out.println("file(" + this.name + ") requested by " + var1 + ":" + var2 + "(" + mode + "): state( " + 
+        private void printTransition(String client, String downloadOrUpload, String mode, int oldState, int newState, int errorCode) {
+            System.out.println("file(" + this.name + ") requested by " + client + ":" + downloadOrUpload + "(" + mode + "): state( " + 
             		(oldState == 0 ? "notshared" : (oldState == 1 ? "readshared" : (oldState == 2 ? "writeshared" : 
             		"back2writeshared"))) + " --> " + (newState == 0 ? "notshared" : (newState == 1 ? "readshared" : 
             		(newState == 2 ? "writeshared" : "back2writeshared"))) + " )  error_code = " + errorCode);
@@ -129,47 +129,46 @@ public class FileServer extends UnicastRemoteObject implements ServerInterface {
             System.out.println("owner = " + this.owner);
         }
 
-        public File(String var2, String var3) {
-            this.name = var2;
+        public File(String name, String port) {
+            this.name = name;
             this.readers = new Vector();
             this.owner = null;
-            this.port = var3;
+            this.port = port;
             this.inStateBack2WriteShared = new Object();
             this.bytes = this.fileRead();
         }
 
         private byte[] fileRead() {
-            Object var1 = null;
 
-            byte[] var5;
+            byte[] buffer;
             try {
-                FileInputStream var2 = new FileInputStream(this.name);
-                var5 = new byte[var2.available()];
-                var2.read(var5);
-                var2.close();
-            } catch (FileNotFoundException var3) {
-                var3.printStackTrace();
+                FileInputStream stream = new FileInputStream(this.name);
+                buffer = new byte[stream.available()];
+                stream.read(buffer);
+                stream.close();
+            } catch (FileNotFoundException e) {
+                e.printStackTrace();
                 return null;
-            } catch (IOException var4) {
-                var4.printStackTrace();
+            } catch (IOException e) {
+                e.printStackTrace();
                 return null;
             }
 
-            System.out.println("file read from " + this.name + ": " + var5.length + " bytes");
-            return var5;
+            System.out.println("file read from " + this.name + ": " + buffer.length + " bytes");
+            return buffer;
         }
 
         private boolean fileWrite() {
             try {
-                FileOutputStream var1 = new FileOutputStream(this.name);
-                var1.write(this.bytes);
-                var1.flush();
-                var1.close();
-            } catch (FileNotFoundException var2) {
-                var2.printStackTrace();
+                FileOutputStream outputStream = new FileOutputStream(this.name);
+                outputStream.write(this.bytes);
+                outputStream.flush();
+                outputStream.close();
+            } catch (FileNotFoundException e) {
+                e.printStackTrace();
                 return false;
-            } catch (IOException var3) {
-                var3.printStackTrace();
+            } catch (IOException e) {
+                e.printStackTrace();
                 return false;
             }
 
@@ -192,14 +191,14 @@ public class FileServer extends UnicastRemoteObject implements ServerInterface {
                         try {
                             System.out.println(client + "now wait on inStateBack2WriteShared");
                             this.inStateBack2WriteShared.wait();
-                        } catch (InterruptedException var12) {
-                            var12.printStackTrace();
+                        } catch (InterruptedException e) {
+                            e.printStackTrace();
                         }
                     }
                 }
 
-                int var3 = this.state;
-                byte var4 = 0;
+                int oldState = this.state;
+                byte errorCode = 0;
                 
                 // State transition
                 switch(this.state) {
@@ -210,12 +209,12 @@ public class FileServer extends UnicastRemoteObject implements ServerInterface {
                         } else if (mode.equals("w")) {
                             this.state = 2;
                             if (this.owner != null) {
-                                var4 = 1;
+                                errorCode = 1;
                             } else {
                                 this.owner = client;
                             }
                         } else {
-                            var4 = 2;
+                            errorCode = 2;
                         }
                         break;
                     case 1:
@@ -225,12 +224,12 @@ public class FileServer extends UnicastRemoteObject implements ServerInterface {
                         } else if (mode.equals("w")) {
                             this.state = 2;
                             if (this.owner != null) {
-                                var4 = 3;
+                                errorCode = 3;
                             } else {
                                 this.owner = client;
                             }
                         } else {
-                            var4 = 4;
+                            errorCode = 4;
                         }
                         break;
                     case 2:
@@ -239,56 +238,56 @@ public class FileServer extends UnicastRemoteObject implements ServerInterface {
                             this.readers.add(client);
                         } else if (mode.equals("w")) {
                             this.state = 3;
-                            ClientInterface var5 = null;
+                            ClientInterface clientInterface = null;
 
                             try {
-                                var5 = (ClientInterface)Naming.lookup("rmi://" + this.owner + ":" + this.port + "/fileclient");
-                            } catch (Exception var11) {
-                                var11.printStackTrace();
-                                var4 = 5;
+                                clientInterface = (ClientInterface)Naming.lookup("rmi://" + this.owner + ":" + this.port + "/fileclient");
+                            } catch (Exception e) {
+                                e.printStackTrace();
+                                errorCode = 5;
                             }
 
-                            if (var5 != null) {
+                            if (clientInterface != null) {
                                 try {
-                                    var5.writeback();
-                                } catch (RemoteException var10) {
-                                    var10.printStackTrace();
-                                    var4 = 6;
+                                    clientInterface.writeback();
+                                } catch (RemoteException e) {
+                                    e.printStackTrace();
+                                    errorCode = 6;
                                 }
 
                                 System.out.println("download( " + this.name + " ): " + this.owner + "'s copy was invalidated");
                             }
 
-                            if (var4 == 0) {
+                            if (errorCode == 0) {
                                 try {
                                     System.out.println("download " + this.name + " ): " + client + " waits for writeback");
                                     this.wait();
-                                } catch (InterruptedException var9) {
-                                    var9.printStackTrace();
-                                    var4 = 7;
+                                } catch (InterruptedException e) {
+                                    e.printStackTrace();
+                                    errorCode = 7;
                                 }
 
                                 this.owner = client;
                             }
                         } else {
-                            var4 = 8;
+                            errorCode = 8;
                         }
                 }
 
                 // 
-                this.printTransition(client, "download", mode, var3, this.state, var4);
-                if (var4 > 0) {
+                this.printTransition(client, "download", mode, oldState, this.state, errorCode);
+                if (errorCode > 0) {
                     return null;
                 } else {
-                    FileContents var14 = new FileContents(this.bytes);
-                    if (var3 == 3) {
+                    FileContents contents = new FileContents(this.bytes);
+                    if (oldState == 3) {
                         synchronized(this.inStateBack2WriteShared) {
                             this.inStateBack2WriteShared.notifyAll();
                             System.out.println(client + " woke up all waiting on inStateBack2WriteShared");
                         }
                     }
 
-                    return var14;
+                    return contents;
                 }
             }
         }
@@ -302,42 +301,41 @@ public class FileServer extends UnicastRemoteObject implements ServerInterface {
          */
         public synchronized boolean upload(String client, FileContents contents) {
         	System.out.println("FileServer::File::upload()");
-            boolean var3 = this.name.equals("");
-            int var10 = this.state != 0 && this.state != 1 ? 0 : 2;
+            int errorCode = this.state != 0 && this.state != 1 ? 0 : 2;
 
-            int var4;
-            for(var4 = 0; var10 == 0 && var4 < this.readers.size(); ++var4) {
-                String var5 = (String)this.readers.elementAt(var4);
-                ClientInterface var6 = null;
+            int oldState;
+            for(oldState = 0; errorCode == 0 && oldState < this.readers.size(); ++oldState) {
+                String reader = (String)this.readers.elementAt(oldState);
+                ClientInterface clientInterface = null;
 
                 try {
-                    var6 = (ClientInterface)Naming.lookup("rmi://" + var5 + ":" + this.port + "/fileclient");
-                } catch (Exception var9) {
-                    var9.printStackTrace();
-                    var10 = 3;
+                    clientInterface = (ClientInterface)Naming.lookup("rmi://" + reader + ":" + this.port + "/fileclient");
+                } catch (Exception e) {
+                    e.printStackTrace();
+                    errorCode = 3;
                 }
 
-                if (var6 != null) {
+                if (clientInterface != null) {
                     try {
-                        var6.invalidate();
-                    } catch (RemoteException var8) {
-                        var8.printStackTrace();
+                        clientInterface.invalidate();
+                    } catch (RemoteException e) {
+                        e.printStackTrace();
                     }
 
-                    System.out.println("update( " + this.name + " ): " + var5 + "'s copy was invalidated");
+                    System.out.println("update( " + this.name + " ): " + reader + "'s copy was invalidated");
                 }
             }
 
             this.readers.removeAllElements();
-            var4 = this.state;
-            if (var10 == 0) {
+            oldState = this.state;
+            if (errorCode == 0) {
                 this.bytes = contents.get();
                 System.out.println("bytes = " + new String(this.bytes));
                 switch(this.state) {
                     case 2:
                         this.state = 0;
                         this.owner = null;
-                        var10 = !this.fileWrite() ? 4 : 0;
+                        errorCode = !this.fileWrite() ? 4 : 0;
                         break;
                     case 3:
                         this.state = 2;
@@ -346,8 +344,8 @@ public class FileServer extends UnicastRemoteObject implements ServerInterface {
                 }
             }
 
-            this.printTransition(client, "upload", "w", var4, this.state, var10);
-            return var10 == 0;
+            this.printTransition(client, "upload", "w", oldState, this.state, errorCode);
+            return errorCode == 0;
         }
 
         public synchronized boolean isStateNotShared() {
