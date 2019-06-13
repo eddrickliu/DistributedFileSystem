@@ -10,15 +10,32 @@ import java.rmi.Naming;
 import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
 
+/**
+ * The file client class can be ran many times for one instance of this program, the
+ * will communicate with the central File Server class. Uses the RMI java classes
+ * to accomplish method execution on different machines
+ */
 public class FileClient extends UnicastRemoteObject implements ClientInterface {
+    //instance variables
     private BufferedReader input = null;
     private static final String ramDiskFile = "/tmp/ggoziker_css434.txt";
     private ServerInterface server = null;
     private FileClient.File file = null;
 
+    /**
+     * File Client argument constructor, this will establish a connection with a given server
+     * as well as set all relevant instance variables
+     *
+     * @param machineName       String that describes the machineName of the server that
+     *                          this client is trying to connect to.
+     * @param port              Stirng that describes the port number shared with clients
+     *                          and Server
+     * @throws RemoteException  Needed for java RMI class
+     */
     public FileClient(String machineName, String port) throws RemoteException {
         try {
-            this.server = (ServerInterface)Naming.lookup("rmi://" + machineName + ":" + port + "/fileserver");
+            this.server = (ServerInterface)Naming.lookup("rmi://"
+                    + machineName + ":" + port + "/fileserver");
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -27,6 +44,10 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
         this.input = new BufferedReader(new InputStreamReader(System.in));
     }
 
+    /**
+     * Looper method to keep receiving inputs through the command line and ask the user
+     * to enter a file name as well as what access mode the user desires to use
+     */
     public void loop() {
         while(true) {
             FileClient.WritebackThread writebackThread = new FileClient.WritebackThread();
@@ -80,14 +101,31 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
         }
     }
 
+    /**
+     * Getter method to get this file's state of being invalid
+     * @return returns true if invalidated false if not
+     */
     public boolean invalidate() {
         return this.file.invalidate();
     }
 
+    /**
+     * Getter method to get this file's state of writeback
+     * @return true if back2readshared false if not
+     */
     public boolean writeback() {
         return this.file.writeback();
     }
 
+    /**
+     * Main method to take in command line arguments through the given terminal.
+     * Creates a new object as well as uses the rebind method in RMI to get the
+     * Flle client on rmi registry
+     *
+     * @param args an array of strings that are the commandline args
+     *             arg0: machineName of server
+     *             arg1: port
+     */
     public static void main(String[] args) {
     	// Check arguments
         if (args.length != 2) {
@@ -107,6 +145,11 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
 
     }
 
+    /**
+     * Private inner class file to help with defining a specific file that is being
+     * used right now. Many different states: invalid, readshared,
+     * writeowned, back2readshared.
+     */
     private class File {
         private static final int state_invalid = 0;
         private static final int state_readshared = 1;
@@ -122,6 +165,11 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
         private byte[] bytes = null;
         private String myIpName = null;
 
+        /**
+         * No arg constructor that sets the file's location
+         * relative to all the client's by
+         * taking the localHost using Inet.
+         */
         public File() {
             try {
                 InetAddress localHost = InetAddress.getLocalHost();
@@ -132,23 +180,58 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
 
         }
 
+        /**
+         * getter method to see if the state is invalid. compares the current
+         * state to the previously set final boolean state_invalid
+         *
+         * @return true if invalid, false if not
+         */
         public synchronized boolean isStateInvalid() {
             return this.state == state_invalid;
         }
 
+        /**
+         * getter method to see if the state is readshared. compares the current
+         * state to the previously set final boolean state_readshared
+         *
+         * @return true if readshared, false if not
+         *
+         */
         public synchronized boolean isStateReadShared() {
             return this.state == state_readshared;
         }
 
+
+        /**
+         * getter method to see if the state is writeowned. compares the current
+         * state to the previously set final boolean state_writeowned
+         *
+         * @return true if writeowned, false if not
+         *
+         */
         public synchronized boolean isStateWriteOwned() {
-            System.out.println("File: " + this.name + ", state: " + this.state + ", ownership:" + this.ownership);
+            System.out.println("File: " + this.name + ", state: " + this.state
+                    + ", ownership:" + this.ownership);
             return this.state == state_writeowned;
         }
 
+
+        /**
+         * getter method to see if the state is back2readShared. compares the current
+         * state to previously set final boolean back2ReadShared.
+         *
+         * @return true if isStateBackToReadShared, false if not
+         *
+         */
         public synchronized boolean isStateBackToReadShared() {
-            return this.state == 3;
+            return this.state == state_back2readshared;
         }
 
+        /**
+         * getter method to see if this file is invalidated
+         *
+         * @return true if invalidated, false if not
+         */
         public synchronized boolean invalidate() {
             if (this.state == 1) {
                 this.state = 0;
@@ -159,6 +242,11 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
             }
         }
 
+        /**
+         * getter method to see if this file is written back to
+         *
+         * @return true if written back false if not
+         */
         public synchronized boolean writeback() {
             if (this.state == 2) {
                 this.state = state_back2readshared;
@@ -169,10 +257,12 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
         }
 
         /**
-         * Return true if the passed file name and state are valid for access
-         * @param name
-         * @param state
-         * @return
+         * Method to check the validity of targetting the given file. Will be used in main
+         * class as a way to continue or not.
+         *
+         * @param name String the is the name of the file
+         * @param state String that described the files state.
+         * @return true if the passed file name and state are valid for access false if not.
          */
         public synchronized boolean hit(String name, String state) {
             if (!this.name.equals(name)) {
@@ -195,6 +285,14 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
             }
         }
 
+        /**
+         * Method to download a file into this method's file contents.
+         *
+         * @param name  String representing the name of this file
+         * @param mode  String representing the mode of this file
+         * @return true if an exception is occured through this process
+         *          false if not
+         */
         public boolean download(String name, String mode) {
             System.out.println("Downloading " + name + " with " + mode + " mode");
             synchronized(this) {
@@ -226,6 +324,13 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
             }
         }
 
+        /**
+         * Method to upload a file to the server, this method uses the RMI
+         * class to call the server's upload method.
+         *
+         * @return true if an exception is occured through this process
+         *          false if not
+         */
         public boolean upload() {
             System.out.println("Uploading: " + this.name);
             synchronized(this) {
@@ -253,6 +358,15 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
             return true;
         }
 
+        /**
+         * Method to execute a unix command with given inputs.
+         * Used primarliy for launching emacs on the client.
+         *
+         * @param cmd the command that is given to the method
+         * @param arg1 first input argument for the command
+         * @param arg2 second input argument of the command
+         * @return returns false if there are any exceptions that are occured
+         */
         private boolean execUnixCommand(String cmd, String arg1, String arg2) {
             String[] args = arg2.equals("") ? new String[2] : new String[3];
             args[0] = cmd;
@@ -275,6 +389,14 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
             }
         }
 
+        /**
+         *
+         * Method to launchEmacs on this client uses the exec unixcommand class to achieve
+         * this goal
+         *
+         * @param mode a String representing the mode of which Emacs will be launched
+         * @return returns false if any exepcetion occurs during the process
+         */
         public boolean launchEmacs(String mode) {
             if (!this.execUnixCommand("chmod", "600", "/tmp/ggoziker_css434.txt")) {
                 return false;
@@ -321,13 +443,25 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
         }
     }
 
+    /**
+     * Helper class to create different threads of the client writeback process
+     * usually gets called when exit happens and file is uploaded. 
+     *
+     */
     private class WritebackThread extends Thread {
+        //instance variable
         private boolean active = false;
 
+        /**
+         * Argument constructor to set instance variable active to true
+         */
         public WritebackThread() {
             this.active = true;
         }
 
+        /**
+         * Run method that automatically gets called when the thread is created.
+         */
         public void run() {
             while(this.isActive()) {
                 if (FileClient.this.file.isStateBackToReadShared()) {
@@ -338,6 +472,9 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
 
         }
 
+        /**
+         * Kills this thread and joins the rest, synchronized
+         */
         synchronized void kill() {
             this.active = false;
 
@@ -349,6 +486,12 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
 
         }
 
+        /**
+         * getter method to get the status of this thread.
+         *
+         *
+         * @return the status of this thread
+         */
         synchronized boolean isActive() {
             return this.active;
         }
