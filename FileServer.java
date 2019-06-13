@@ -26,7 +26,7 @@ public class FileServer extends UnicastRemoteObject implements ServerInterface {
         try {
             FileServer var1 = new FileServer(var0[0]);
             Naming.rebind("rmi://localhost:" + var0[0] + "/fileserver", var1);
-            System.out.println("rmi://localhost: " + var0[0] + "/fileserver invokded");
+            System.out.println("FileServer running on port " + var0[0]);
         } catch (Exception var2) {
             var2.printStackTrace();
             System.exit(1);
@@ -64,7 +64,7 @@ public class FileServer extends UnicastRemoteObject implements ServerInterface {
      * FileServer::upload()
      */
     public boolean upload(String client, String fileName, FileContents contents) {
-    	System.out.println("FileServer::upload()");    	
+//    	System.out.println("FileServer::upload()");    delete	
         FileServer.File file = null;
         synchronized(this.cache) {
         	for(int i = 0; i < this.cache.size(); i++) {
@@ -74,14 +74,14 @@ public class FileServer extends UnicastRemoteObject implements ServerInterface {
                 	System.out.println("File was found in cache");
                 	break;
                 }else{
-                	System.out.println("Checkec a cache file, not a match");
+//                	System.out.println("Checked a cache file, not a match");  DELETE
                     file = null;
                     continue;
                 }
             }
         }
 
-        System.out.println(client + " upload: file = " + file);
+        System.out.println(client + "Uploading " + file);
         return file == null ? false : file.upload(client, contents);
     }
 

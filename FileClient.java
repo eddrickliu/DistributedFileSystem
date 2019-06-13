@@ -16,11 +16,11 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
     private ServerInterface server = null;
     private FileClient.File file = null;
 
-    public FileClient(String var1, String var2) throws RemoteException {
+    public FileClient(String machineName, String port) throws RemoteException {
         try {
-            this.server = (ServerInterface)Naming.lookup("rmi://" + var1 + ":" + var2 + "/fileserver");
-        } catch (Exception var4) {
-            var4.printStackTrace();
+            this.server = (ServerInterface)Naming.lookup("rmi://" + machineName + ":" + port + "/fileserver");
+        } catch (Exception e) {
+            e.printStackTrace();
         }
 
         this.file = new FileClient.File();
@@ -31,48 +31,49 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
         while(true) {
             FileClient.WritebackThread writebackThread = new FileClient.WritebackThread();
             writebackThread.start();
-            String var2 = null;
+            String name = null;
             String state = null;
 
             try {
-                System.out.println("FileClient: Next file to open:");
-                System.out.print("\tFile name: ");
-                var2 = this.input.readLine();
-                if (!var2.equals("quit") && !var2.equals("exit")) {
-                    if (var2.equals("")) {
-                        System.err.println("Do it again");
+                System.out.println("Enter name of file to open:");
+                name = this.input.readLine();
+                if (!name.equals("quit") && !name.equals("exit")) {
+                    if (name.equals("")) {
+                        System.err.println("Invalid input");
+                        System.out.print("Enter name of file to open: ");
                         writebackThread.kill();
                         continue;
                     }
                 } else {
                     if (this.file.isStateWriteOwned()) {
                         this.file.upload();
-                        System.out.println("After upload1");		// @TODO delete
+//                        System.out.println("After upload1");		// @TODO delete
                     }
 
                     System.exit(0);
                 }
 
-                System.out.print("\tHow(r/w): ");
+                System.out.print("Enter access mode (r/w): ");
                 state = this.input.readLine();
                 if (!state.equals("r") && !state.equals("w")) {
-                    System.err.println("Do it again");
+                    System.err.println("Invalid input.");
+                    System.out.print("Enter access mode (r/w): ");
                     writebackThread.kill();
                     continue;
                 }
-            } catch (IOException var5) {
-                var5.printStackTrace();
+            } catch (IOException e) {
+                e.printStackTrace();
             }
 
             writebackThread.kill();
             // Check if 
-            if (!this.file.hit(var2, state)) {
+            if (!this.file.hit(name, state)) {
                 if (this.file.isStateWriteOwned()) {
                     this.file.upload();
-                    System.out.println("After upload2");		// @TODO delete
+//                    System.out.println("After upload2");		// @TODO delete
                 }
 
-                this.file.download(var2, state);
+                this.file.download(name, state);
             }
 
             this.file.launchEmacs(state);
@@ -87,19 +88,20 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
         return this.file.writeback();
     }
 
-    public static void main(String[] var0) {
-        if (var0.length != 2) {
+    public static void main(String[] args) {
+    	// Check arguments
+        if (args.length != 2) {
             System.err.println("usage: java FileClient server_ip port#");
             System.exit(-1);
         }
 
         try {
-            FileClient var1 = new FileClient(var0[0], var0[1]);
-            Naming.rebind("rmi://localhost:" + var0[1] + "/fileclient", var1);
-            System.out.println("rmi://localhost: " + var0[0] + "/fileclient invokded");
-            var1.loop();
-        } catch (Exception var2) {
-            var2.printStackTrace();
+            FileClient client = new FileClient(args[0], args[1]);
+            Naming.rebind("rmi://localhost:" + args[1] + "/fileclient", client);
+            System.out.println("FileClient running on port " + args[0]);
+            client.loop();
+        } catch (Exception e) {
+            e.printStackTrace();
             System.exit(1);
         }
 
@@ -122,10 +124,10 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
 
         public File() {
             try {
-                InetAddress var2 = InetAddress.getLocalHost();
-                this.myIpName = var2.getHostName();
-            } catch (UnknownHostException var3) {
-                var3.printStackTrace();
+                InetAddress localHost = InetAddress.getLocalHost();
+                this.myIpName = localHost.getHostName();
+            } catch (UnknownHostException e) {
+                e.printStackTrace();
             }
 
         }
@@ -139,7 +141,7 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
         }
 
         public synchronized boolean isStateWriteOwned() {
-            System.out.println("name = " + this.name + " state = " + this.state + " ownership = " + this.ownership);
+            System.out.println("File: " + this.name + ", state: " + this.state + ", ownership:" + this.ownership);
             return this.state == state_writeowned;
         }
 
@@ -150,7 +152,7 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
         public synchronized boolean invalidate() {
             if (this.state == 1) {
                 this.state = 0;
-                System.out.println("file( " + this.name + ") invalidated...state " + this.state);
+                System.out.println("File " + this.name + " invalidated. State is now " + this.state);
                 return true;
             } else {
                 return false;
@@ -174,25 +176,27 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
          */
         public synchronized boolean hit(String name, String state) {
             if (!this.name.equals(name)) {
-                System.out.println("file: " + name + " does not exist.");
+                System.out.println("File " + name + " does not exist.");
                 return false;
-            } else if (this.state == 3) {
-                System.out.println("file: " + name + " must be written back.");
-                return false;
-            } else if (state.equals("r") && this.state != 0) {
-                System.out.println("file: " + name + " exists for read.");
-                return true;
-            } else if (state.equals("w") && this.state == 2) {
-                System.out.println("file: " + name + " is owned for write");
-                return true;
-            } else {
-                System.out.println("file: " + name + " accessed with " + state);
-                return false;
+            } else{
+            	if (this.state == 3) {
+	                System.out.println("File " + name + " needs to be written back.");
+	                return false;
+	            } else if (state.equals("r") && this.state != 0) {
+	                System.out.println("File " + name + " exists for read.");
+	                return true;
+	            } else if (state.equals("w") && this.state == 2) {
+	                System.out.println("File " + name + " is owned for write");
+	                return true;
+	            } else {
+	                System.out.println("File " + name + " accessed with " + state);
+	                return false;
+	            }
             }
         }
 
         public boolean download(String name, String mode) {
-            System.out.println("downloading: " + name + " with " + mode + " mode");
+            System.out.println("Downloading " + name + " with " + mode + " mode");
             synchronized(this) {
                 switch(this.state) {
                     case 0:
@@ -216,14 +220,14 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
                 FileContents contents = server.download(myIpName, name, mode);
                 this.bytes = contents.get();
                 return true;
-            } catch (RemoteException var5) {
-                var5.printStackTrace();
+            } catch (RemoteException e) {
+                e.printStackTrace();
                 return false;
             }
         }
 
         public boolean upload() {
-            System.out.println("uploading: " + this.name + " start");
+            System.out.println("Uploading: " + this.name);
             synchronized(this) {
                 switch(this.state) {
                     case 2:
@@ -234,39 +238,39 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
                 }
             }
 
-            FileContents var1 = new FileContents(this.bytes);
+            FileContents contents = new FileContents(this.bytes);
 
             try {
-            	System.out.println("FileClient::upload() -- about to call \"FileClient.this.server.upload(this.myIpName, this.name, var1);\"");
-                server.upload(this.myIpName, this.name, var1);
-            	System.out.println("FileClient::upload() -- finished calling \"FileClient.this.server.upload(this.myIpName, this.name, var1);\"");
-            } catch (RemoteException var3) {
-                var3.printStackTrace();
+//            	System.out.println("FileClient::upload() -- about to call \"FileClient.this.server.upload(this.myIpName, this.name, var1);\"");			DELETE
+                server.upload(this.myIpName, this.name, contents);
+//            	System.out.println("FileClient::upload() -- finished calling \"FileClient.this.server.upload(this.myIpName, this.name, var1);\"");		DELETE
+            } catch (RemoteException e) {
+                e.printStackTrace();
                 return false;
             }
 
-            System.out.println("uploading: " + this.name + " completed");
+            System.out.println("Done uploading " + this.name);
             return true;
         }
 
         private boolean execUnixCommand(String cmd, String arg1, String arg2) {
-            String[] var4 = arg2.equals("") ? new String[2] : new String[3];
-            var4[0] = cmd;
-            var4[1] = arg1;
+            String[] args = arg2.equals("") ? new String[2] : new String[3];
+            args[0] = cmd;
+            args[1] = arg1;
             if (!arg2.equals("")) {
-                var4[2] = arg2;
+                args[2] = arg2;
             }
 
             try {
                 Runtime runtime = Runtime.getRuntime();
-                Process process = runtime.exec(var4);
+                Process process = runtime.exec(args);
                 int retval = process.waitFor();
                 return true;
-            } catch (IOException var8) {
-                var8.printStackTrace();
+            } catch (IOException e) {
+                e.printStackTrace();
                 return false;
-            } catch (InterruptedException var9) {
-                var9.printStackTrace();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
                 return false;
             }
         }
@@ -276,15 +280,15 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
                 return false;
             } else {
                 try {
-                    FileOutputStream var2 = new FileOutputStream("/tmp/ggoziker_css434.txt");
-                    var2.write(this.bytes);
-                    var2.flush();
-                    var2.close();
-                } catch (FileNotFoundException var6) {
-                    var6.printStackTrace();
+                    FileOutputStream stream = new FileOutputStream("/tmp/ggoziker_css434.txt");
+                    stream.write(this.bytes);
+                    stream.flush();
+                    stream.close();
+                } catch (FileNotFoundException e) {
+                    e.printStackTrace();
                     return false;
-                } catch (IOException var7) {
-                    var7.printStackTrace();
+                } catch (IOException e) {
+                    e.printStackTrace();
                     return false;
                 }
 
@@ -292,21 +296,21 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
                 if (!this.execUnixCommand("chmod", mode.equals("r") ? "400" : "600", "/tmp/ggoziker_css434.txt")) {
                     return false;
                 } else {
-                    boolean var8 = this.execUnixCommand("emacs", "/tmp/ggoziker_css434.txt", "");
+                    boolean emacsLaunched = this.execUnixCommand("emacs", "/tmp/ggoziker_css434.txt", "");
 //                    
                     System.out.println("Launched emacs");
 //                    
-                    if (var8 && mode.equals("w")) {
+                    if (emacsLaunched && mode.equals("w")) {
                         try {
-                            FileInputStream var3 = new FileInputStream("/tmp/ggoziker_css434.txt");
-                            this.bytes = new byte[var3.available()];
-                            var3.read(this.bytes);
-                            var3.close();
-                        } catch (FileNotFoundException var4) {
-                            var4.printStackTrace();
+                            FileInputStream stream = new FileInputStream("/tmp/ggoziker_css434.txt");
+                            this.bytes = new byte[stream.available()];
+                            stream.read(this.bytes);
+                            stream.close();
+                        } catch (FileNotFoundException e) {
+                            e.printStackTrace();
                             return false;
-                        } catch (IOException var5) {
-                            var5.printStackTrace();
+                        } catch (IOException e) {
+                            e.printStackTrace();
                             return false;
                         }
                     }
@@ -328,7 +332,7 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
             while(this.isActive()) {
                 if (FileClient.this.file.isStateBackToReadShared()) {
                     FileClient.this.file.upload();
-                    System.out.println("After upload3");		// @TODO delete
+//                    System.out.println("After upload3");		// @TODO delete
                 }
             }
 
@@ -339,8 +343,8 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
 
             try {
                 this.join();
-            } catch (InterruptedException var2) {
-                var2.printStackTrace();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
             }
 
         }
