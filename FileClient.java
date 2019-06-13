@@ -11,9 +11,10 @@ import java.rmi.RemoteException;
 import java.rmi.server.UnicastRemoteObject;
 
 /**
- * The file client class can be ran many times for one instance of this program, the
+ * The file client class can be ran many times for one instance of this program, this
  * will communicate with the central File Server class. Uses the RMI java classes
  * to accomplish method execution on different machines
+ * Implements everything in ClientInterface
  */
 public class FileClient extends UnicastRemoteObject implements ClientInterface {
     //instance variables
