@@ -12,7 +12,7 @@ import java.rmi.server.UnicastRemoteObject;
 
 public class FileClient extends UnicastRemoteObject implements ClientInterface {
     private BufferedReader input = null;
-    private static final String ramDiskFile = "/tmp/munehiro.txt";
+    private static final String ramDiskFile = "/tmp/ggoziker_css434.txt";
     private ServerInterface server = null;
     private FileClient.File file = null;
 
@@ -29,10 +29,10 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
 
     public void loop() {
         while(true) {
-            FileClient.WritebackThread var1 = new FileClient.WritebackThread();
-            var1.start();
+            FileClient.WritebackThread writebackThread = new FileClient.WritebackThread();
+            writebackThread.start();
             String var2 = null;
-            String var3 = null;
+            String state = null;
 
             try {
                 System.out.println("FileClient: Next file to open:");
@@ -41,38 +41,41 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
                 if (!var2.equals("quit") && !var2.equals("exit")) {
                     if (var2.equals("")) {
                         System.err.println("Do it again");
-                        var1.kill();
+                        writebackThread.kill();
                         continue;
                     }
                 } else {
                     if (this.file.isStateWriteOwned()) {
                         this.file.upload();
+                        System.out.println("After upload1");		// @TODO delete
                     }
 
                     System.exit(0);
                 }
 
                 System.out.print("\tHow(r/w): ");
-                var3 = this.input.readLine();
-                if (!var3.equals("r") && !var3.equals("w")) {
+                state = this.input.readLine();
+                if (!state.equals("r") && !state.equals("w")) {
                     System.err.println("Do it again");
-                    var1.kill();
+                    writebackThread.kill();
                     continue;
                 }
             } catch (IOException var5) {
                 var5.printStackTrace();
             }
 
-            var1.kill();
-            if (!this.file.hit(var2, var3)) {
+            writebackThread.kill();
+            // Check if 
+            if (!this.file.hit(var2, state)) {
                 if (this.file.isStateWriteOwned()) {
                     this.file.upload();
+                    System.out.println("After upload2");		// @TODO delete
                 }
 
-                this.file.download(var2, var3);
+                this.file.download(var2, state);
             }
 
-            this.file.launchEmacs(var3);
+            this.file.launchEmacs(state);
         }
     }
 
@@ -107,7 +110,10 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
         private static final int state_readshared = 1;
         private static final int state_writeowned = 2;
         private static final int state_back2readshared = 3;
-        private int state = 0;
+        /*
+         * State is 2 if it's in write mode
+         */
+        private int state = state_invalid;
         private boolean inEdit = false;
         private String name = "";
         private boolean ownership = false;
@@ -125,16 +131,16 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
         }
 
         public synchronized boolean isStateInvalid() {
-            return this.state == 0;
+            return this.state == state_invalid;
         }
 
         public synchronized boolean isStateReadShared() {
-            return this.state == 1;
+            return this.state == state_readshared;
         }
 
         public synchronized boolean isStateWriteOwned() {
             System.out.println("name = " + this.name + " state = " + this.state + " ownership = " + this.ownership);
-            return this.state == 2;
+            return this.state == state_writeowned;
         }
 
         public synchronized boolean isStateBackToReadShared() {
@@ -153,56 +159,62 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
 
         public synchronized boolean writeback() {
             if (this.state == 2) {
-                this.state = 3;
+                this.state = state_back2readshared;
                 return true;
             } else {
                 return false;
             }
         }
 
-        public synchronized boolean hit(String var1, String var2) {
-            if (!this.name.equals(var1)) {
-                System.out.println("file: " + var1 + " does not exist.");
+        /**
+         * Return true if the passed file name and state are valid for access
+         * @param name
+         * @param state
+         * @return
+         */
+        public synchronized boolean hit(String name, String state) {
+            if (!this.name.equals(name)) {
+                System.out.println("file: " + name + " does not exist.");
                 return false;
             } else if (this.state == 3) {
-                System.out.println("file: " + var1 + " must be written back.");
+                System.out.println("file: " + name + " must be written back.");
                 return false;
-            } else if (var2.equals("r") && this.state != 0) {
-                System.out.println("file: " + var1 + " exists for read.");
+            } else if (state.equals("r") && this.state != 0) {
+                System.out.println("file: " + name + " exists for read.");
                 return true;
-            } else if (var2.equals("w") && this.state == 2) {
-                System.out.println("file: " + var1 + " is owned for write");
+            } else if (state.equals("w") && this.state == 2) {
+                System.out.println("file: " + name + " is owned for write");
                 return true;
             } else {
-                System.out.println("file: " + var1 + " accessed with " + var2);
+                System.out.println("file: " + name + " accessed with " + state);
                 return false;
             }
         }
 
-        public boolean download(String var1, String var2) {
-            System.out.println("downloading: " + var1 + " with " + var2 + " mode");
+        public boolean download(String name, String mode) {
+            System.out.println("downloading: " + name + " with " + mode + " mode");
             synchronized(this) {
                 switch(this.state) {
                     case 0:
-                        if (var2.equals("r")) {
+                        if (mode.equals("r")) {
                             this.state = 1;
-                        } else if (var2.equals("w")) {
+                        } else if (mode.equals("w")) {
                             this.state = 2;
                         }
                         break;
                     case 1:
-                        if (var2.equals("w")) {
+                        if (mode.equals("w")) {
                             this.state = 2;
                         }
                 }
             }
 
-            this.name = var1;
-            this.ownership = var2.equals("w");
+            this.name = name;
+            this.ownership = mode.equals("w");
 
             try {
-                FileContents var3 = FileClient.this.server.download(this.myIpName, this.name, var2);
-                this.bytes = var3.get();
+                FileContents contents = server.download(myIpName, name, mode);
+                this.bytes = contents.get();
                 return true;
             } catch (RemoteException var5) {
                 var5.printStackTrace();
@@ -225,7 +237,9 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
             FileContents var1 = new FileContents(this.bytes);
 
             try {
-                FileClient.this.server.upload(this.myIpName, this.name, var1);
+            	System.out.println("FileClient::upload() -- about to call \"FileClient.this.server.upload(this.myIpName, this.name, var1);\"");
+                server.upload(this.myIpName, this.name, var1);
+            	System.out.println("FileClient::upload() -- finished calling \"FileClient.this.server.upload(this.myIpName, this.name, var1);\"");
             } catch (RemoteException var3) {
                 var3.printStackTrace();
                 return false;
@@ -235,18 +249,18 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
             return true;
         }
 
-        private boolean execUnixCommand(String var1, String var2, String var3) {
-            String[] var4 = var3.equals("") ? new String[2] : new String[3];
-            var4[0] = var1;
-            var4[1] = var2;
-            if (!var3.equals("")) {
-                var4[2] = var3;
+        private boolean execUnixCommand(String cmd, String arg1, String arg2) {
+            String[] var4 = arg2.equals("") ? new String[2] : new String[3];
+            var4[0] = cmd;
+            var4[1] = arg1;
+            if (!arg2.equals("")) {
+                var4[2] = arg2;
             }
 
             try {
-                Runtime var5 = Runtime.getRuntime();
-                Process var6 = var5.exec(var4);
-                int var7 = var6.waitFor();
+                Runtime runtime = Runtime.getRuntime();
+                Process process = runtime.exec(var4);
+                int retval = process.waitFor();
                 return true;
             } catch (IOException var8) {
                 var8.printStackTrace();
@@ -257,12 +271,12 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
             }
         }
 
-        public boolean launchEmacs(String var1) {
-            if (!this.execUnixCommand("chmod", "600", "/tmp/munehiro.txt")) {
+        public boolean launchEmacs(String mode) {
+            if (!this.execUnixCommand("chmod", "600", "/tmp/ggoziker_css434.txt")) {
                 return false;
             } else {
                 try {
-                    FileOutputStream var2 = new FileOutputStream("/tmp/munehiro.txt");
+                    FileOutputStream var2 = new FileOutputStream("/tmp/ggoziker_css434.txt");
                     var2.write(this.bytes);
                     var2.flush();
                     var2.close();
@@ -274,13 +288,17 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
                     return false;
                 }
 
-                if (!this.execUnixCommand("chmod", var1.equals("r") ? "400" : "600", "/tmp/munehiro.txt")) {
+                // Set file's access mode to 400 if mode==read, to 600 if mode==write
+                if (!this.execUnixCommand("chmod", mode.equals("r") ? "400" : "600", "/tmp/ggoziker_css434.txt")) {
                     return false;
                 } else {
-                    boolean var8 = this.execUnixCommand("emacs", "/tmp/munehiro.txt", "");
-                    if (var8 && var1.equals("w")) {
+                    boolean var8 = this.execUnixCommand("emacs", "/tmp/ggoziker_css434.txt", "");
+//                    
+                    System.out.println("Launched emacs");
+//                    
+                    if (var8 && mode.equals("w")) {
                         try {
-                            FileInputStream var3 = new FileInputStream("/tmp/munehiro.txt");
+                            FileInputStream var3 = new FileInputStream("/tmp/ggoziker_css434.txt");
                             this.bytes = new byte[var3.available()];
                             var3.read(this.bytes);
                             var3.close();
@@ -310,6 +328,7 @@ public class FileClient extends UnicastRemoteObject implements ClientInterface {
             while(this.isActive()) {
                 if (FileClient.this.file.isStateBackToReadShared()) {
                     FileClient.this.file.upload();
+                    System.out.println("After upload3");		// @TODO delete
                 }
             }
 

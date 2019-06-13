@@ -60,23 +60,29 @@ public class FileServer extends UnicastRemoteObject implements ServerInterface {
         return var4.download(var1, var3);
     }
 
-    public boolean upload(String var1, String var2, FileContents var3) {
-        FileServer.File var4 = null;
+    /**
+     * FileServer::upload()
+     */
+    public boolean upload(String client, String fileName, FileContents contents) {
+    	System.out.println("FileServer::upload()");    	
+        FileServer.File file = null;
         synchronized(this.cache) {
-            int var6 = 0;
-
-            while(var6 < this.cache.size()) {
-                var4 = (FileServer.File)this.cache.elementAt(var6);
-                if (!var4.hit(var2)) {
-                    var4 = null;
-                    ++var6;
+        	for(int i = 0; i < this.cache.size(); i++) {
+        		System.out.println("Searching cache for the file");
+                file = (File)this.cache.elementAt(i);
+                if (file.hit(fileName)) {
+                	System.out.println("File was found in cache");
+                	break;
+                }else{
+                	System.out.println("Checkec a cache file, not a match");
+                    file = null;
                     continue;
                 }
             }
         }
 
-        System.out.println(var1 + " upload: file = " + var4);
-        return var4 == null ? false : var4.upload(var1, var3);
+        System.out.println(client + " upload: file = " + file);
+        return file == null ? false : file.upload(client, contents);
     }
 
     private class File {
@@ -114,8 +120,11 @@ public class FileServer extends UnicastRemoteObject implements ServerInterface {
 
         }
 
-        private void printTransition(String var1, String var2, String var3, int var4, int var5, int var6) {
-            System.out.println("file(" + this.name + ") requested by " + var1 + ":" + var2 + "(" + var3 + "): state( " + (var4 == 0 ? "notshared" : (var4 == 1 ? "readshared" : (var4 == 2 ? "writeshared" : "back2writeshared"))) + " --> " + (var5 == 0 ? "notshared" : (var5 == 1 ? "readshared" : (var5 == 2 ? "writeshared" : "back2writeshared"))) + " )  error_code = " + var6);
+        private void printTransition(String var1, String var2, String mode, int oldState, int newState, int errorCode) {
+            System.out.println("file(" + this.name + ") requested by " + var1 + ":" + var2 + "(" + mode + "): state( " + 
+            		(oldState == 0 ? "notshared" : (oldState == 1 ? "readshared" : (oldState == 2 ? "writeshared" : 
+            		"back2writeshared"))) + " --> " + (newState == 0 ? "notshared" : (newState == 1 ? "readshared" : 
+            		(newState == 2 ? "writeshared" : "back2writeshared"))) + " )  error_code = " + errorCode);
             this.listReaders();
             System.out.println("owner = " + this.owner);
         }
@@ -168,14 +177,20 @@ public class FileServer extends UnicastRemoteObject implements ServerInterface {
             return true;
         }
 
-        public synchronized FileContents download(String var1, String var2) {
+        /**
+         * FileServer::File::download()
+         * @param client
+         * @param mode
+         * @return
+         */
+        public synchronized FileContents download(String client, String mode) {
             if (this.name.equals("")) {
                 return null;
             } else {
                 while(this.state == 3) {
                     synchronized(this.inStateBack2WriteShared) {
                         try {
-                            System.out.println(var1 + "now wait on inStateBack2WriteShared");
+                            System.out.println(client + "now wait on inStateBack2WriteShared");
                             this.inStateBack2WriteShared.wait();
                         } catch (InterruptedException var12) {
                             var12.printStackTrace();
@@ -185,42 +200,44 @@ public class FileServer extends UnicastRemoteObject implements ServerInterface {
 
                 int var3 = this.state;
                 byte var4 = 0;
+                
+                // State transition
                 switch(this.state) {
                     case 0:
-                        if (var2.equals("r")) {
+                        if (mode.equals("r")) {
                             this.state = 1;
-                            this.readers.add(var1);
-                        } else if (var2.equals("w")) {
+                            this.readers.add(client);
+                        } else if (mode.equals("w")) {
                             this.state = 2;
                             if (this.owner != null) {
                                 var4 = 1;
                             } else {
-                                this.owner = var1;
+                                this.owner = client;
                             }
                         } else {
                             var4 = 2;
                         }
                         break;
                     case 1:
-                        this.removeReader(var1);
-                        if (var2.equals("r")) {
-                            this.readers.add(var1);
-                        } else if (var2.equals("w")) {
+                        this.removeReader(client);
+                        if (mode.equals("r")) {
+                            this.readers.add(client);
+                        } else if (mode.equals("w")) {
                             this.state = 2;
                             if (this.owner != null) {
                                 var4 = 3;
                             } else {
-                                this.owner = var1;
+                                this.owner = client;
                             }
                         } else {
                             var4 = 4;
                         }
                         break;
                     case 2:
-                        this.removeReader(var1);
-                        if (var2.equals("r")) {
-                            this.readers.add(var1);
-                        } else if (var2.equals("w")) {
+                        this.removeReader(client);
+                        if (mode.equals("r")) {
+                            this.readers.add(client);
+                        } else if (mode.equals("w")) {
                             this.state = 3;
                             ClientInterface var5 = null;
 
@@ -244,21 +261,22 @@ public class FileServer extends UnicastRemoteObject implements ServerInterface {
 
                             if (var4 == 0) {
                                 try {
-                                    System.out.println("download " + this.name + " ): " + var1 + " waits for writeback");
+                                    System.out.println("download " + this.name + " ): " + client + " waits for writeback");
                                     this.wait();
                                 } catch (InterruptedException var9) {
                                     var9.printStackTrace();
                                     var4 = 7;
                                 }
 
-                                this.owner = var1;
+                                this.owner = client;
                             }
                         } else {
                             var4 = 8;
                         }
                 }
 
-                this.printTransition(var1, "download", var2, var3, this.state, var4);
+                // 
+                this.printTransition(client, "download", mode, var3, this.state, var4);
                 if (var4 > 0) {
                     return null;
                 } else {
@@ -266,7 +284,7 @@ public class FileServer extends UnicastRemoteObject implements ServerInterface {
                     if (var3 == 3) {
                         synchronized(this.inStateBack2WriteShared) {
                             this.inStateBack2WriteShared.notifyAll();
-                            System.out.println(var1 + " woke up all waiting on inStateBack2WriteShared");
+                            System.out.println(client + " woke up all waiting on inStateBack2WriteShared");
                         }
                     }
 
@@ -275,7 +293,15 @@ public class FileServer extends UnicastRemoteObject implements ServerInterface {
             }
         }
 
-        public synchronized boolean upload(String var1, FileContents var2) {
+        
+        /**
+         * 
+         * @param client
+         * @param contents
+         * @return
+         */
+        public synchronized boolean upload(String client, FileContents contents) {
+        	System.out.println("FileServer::File::upload()");
             boolean var3 = this.name.equals("");
             int var10 = this.state != 0 && this.state != 1 ? 0 : 2;
 
@@ -305,7 +331,7 @@ public class FileServer extends UnicastRemoteObject implements ServerInterface {
             this.readers.removeAllElements();
             var4 = this.state;
             if (var10 == 0) {
-                this.bytes = var2.get();
+                this.bytes = contents.get();
                 System.out.println("bytes = " + new String(this.bytes));
                 switch(this.state) {
                     case 2:
@@ -315,12 +341,12 @@ public class FileServer extends UnicastRemoteObject implements ServerInterface {
                         break;
                     case 3:
                         this.state = 2;
-                        this.owner = var1;
+                        this.owner = client;
                         this.notify();
                 }
             }
 
-            this.printTransition(var1, "upload", "w", var4, this.state, var10);
+            this.printTransition(client, "upload", "w", var4, this.state, var10);
             return var10 == 0;
         }
 
@@ -340,8 +366,13 @@ public class FileServer extends UnicastRemoteObject implements ServerInterface {
             return this.state == 3;
         }
 
-        public synchronized boolean hit(String var1) {
-            return this.name.equals(var1);
+        /**
+         * Does this file's name match the passed filename?
+         * @param fileName
+         * @return
+         */
+        public synchronized boolean hit(String fileName) {
+            return this.name.equals(fileName);
         }
     }
 }
